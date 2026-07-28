@@ -1,0 +1,123 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+enum UserRole {
+  FREE
+  PREMIUM
+  ADMIN
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  name              String?
+  role              UserRole  @default(FREE)
+  dailySearches     Int       @default(0)
+  dailyPrompts      Int       @default(0)
+  dailyDownloads    Int       @default(0)
+  lastResetDate     DateTime? @map("last_reset_date")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  conversations     Conversation[]
+  generatedDocuments GeneratedDocument[]
+
+  @@map("users")
+}
+
+model Conversation {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  role           String   // 'user' | 'assistant'
+  content        String
+  references     Json?   // {docs: [], decisions: []}
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model LegalDocument {
+  id        String   @id @default(uuid())
+  title     String
+  type      String   // 'uu' | 'pp' | 'presiden' | 'menteri' | 'perda'
+  content   String   @db.Text
+  summary   String?  @db.Text
+  metadata  Json?    // {nomor, tahun, tentang}
+  sourceUrl String?  @map("source_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("legal_documents")
+}
+
+model CourtDecision {
+  id                   String   @id @default(uuid())
+  caseNumber           String   @map("case_number")
+  court                String   // 'ma' | 'pt' | 'pn' | 'ptun' | 'phi'
+  judges               String[] // Array of judge names
+  parties              String[] // Plaintiff vs Defendant
+  decisionDate         DateTime @map("decision_date") @db.Date
+  verdict              String   @db.Text
+  legalConsideration   String?  @map("legal_consideration") @db.Text
+  metadata             Json?
+  sourceUrl            String?  @map("source_url")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("court_decisions")
+}
+
+model GeneratedDocument {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  type      String   // 'kontrak' | 'mou' | 'somasi' | 'kuasa' | dll
+  title     String
+  content   String   @db.Text
+  inputData Json?    @map("input_data")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("generated_documents")
+}
+
+model DocumentReview {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  fileName     String   @map("file_name")
+  fileType     String   @map("file_type")
+  reviewType   String   @map("review_type") // 'contract' | 'compliance' | 'due_diligence'
+  summary      String?  @db.Text
+  risks        Json?
+  overallScore Int?     @map("overall_score")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("document_reviews")
+}
