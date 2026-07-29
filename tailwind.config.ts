@@ -51,6 +51,7 @@ const config: Config = {
         },
         danger: "#DC2626",
         warning: "#F59E0B",
+        border: "rgb(var(--border) / <alpha-value>)",
         background: "#FAFBFC",
         surface: "#FFFFFF",
         "text-primary": "#1F2937",

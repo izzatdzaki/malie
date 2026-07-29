@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getLegalAnswer, type LegalReference } from '@/lib/ai/claude';
+import { getLegalAnswer } from '@/lib/ai/claude';
 import { searchAll } from '@/lib/vector/search';
 
 export async function POST(req: NextRequest) {

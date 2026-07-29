@@ -1,13 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { DOCUMENT_TEMPLATES } from '@/lib/ai/gemini';
 
 export default function TemplateFormPage() {
   const params = useParams();
-  const router = useRouter();
   const templateId = params.templateId as string;
   const template = DOCUMENT_TEMPLATES.find((t) => t.id === templateId);
 

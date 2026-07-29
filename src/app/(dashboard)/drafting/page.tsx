@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { DOCUMENT_TEMPLATES } from '@/lib/ai/gemini';
-import { cn } from '@/lib/utils';
 
 export default function DraftingPage() {
   return (

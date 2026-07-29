@@ -5,6 +5,8 @@
  * Note: This is a template - adjust based on actual website structure
  */
 
+import { PrismaClient } from '@prisma/client';
+
 interface CourtDecision {
   caseNumber: string;
   court: string;
@@ -84,18 +86,18 @@ export async function scrapeAllCourts(): Promise<CourtDecision[]> {
  * Example function to save decisions to database
  */
 export async function saveDecisionsToDatabase(decisions: CourtDecision[]) {
-  const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
 
   for (const dec of decisions) {
     try {
       await prisma.courtDecision.upsert({
-        where: { caseNumber: dec.caseNumber },
+        where: { id: dec.caseNumber },
         update: {
           verdict: dec.verdict,
           legalConsideration: dec.legalConsideration,
         },
         create: {
+          id: dec.caseNumber,
           caseNumber: dec.caseNumber,
           court: dec.court,
           judges: dec.judges,

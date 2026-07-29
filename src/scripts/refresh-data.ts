@@ -1,92 +1,35 @@
 /**
- * Data refresh script
- * Run this periodically to keep data up to date
+ * Refresh legal regulation metadata from peraturan.go.id.
  *
- * Usage: npx ts-node scripts/refresh-data.ts
+ * Usage: npm run scrape:sync -- uu 1
  */
 
-import { scrapeAllUU } from './scrapers/indonesiallegal';
-import { scrapeAllCourts } from './scrapers/ma-scraper';
-import { saveToDatabase } from './scrapers/indonesiallegal';
-import { saveDecisionsToDatabase } from './scrapers/ma-scraper';
+import {
+  isRegulationType,
+  saveToDatabase,
+  scrapeAll,
+  type RegulationType,
+} from './scrapers/peraturan-go-id';
 
-async function refreshDocuments() {
-  console.log('[REFRESH] Starting document refresh...');
-  console.time('document-refresh');
+async function main() {
+  const requestedType = process.argv[2] ?? 'uu';
+  if (!isRegulationType(requestedType)) {
+    throw new Error(`Unsupported regulation type: ${requestedType}`);
+  }
 
-  try {
-    // Scrape new UU
-    console.log('[REFRESH] Scraping UU documents...');
-    const uuDocs = await scrapeAllUU();
-    console.log(`[REFRESH] Scraped ${uuDocs.length} UU documents`);
+  const type: RegulationType = requestedType;
+  const maxPages = Number(process.argv[3] ?? process.env.SCRAPE_MAX_PAGES ?? '1');
 
-    // Save to database
-    if (uuDocs.length > 0) {
-      await saveToDatabase(uuDocs);
-      console.log('[REFRESH] UU documents saved to database');
-    }
+  console.log(`[REFRESH] Scraping ${type}, ${maxPages} page(s)`);
+  const regulations = await scrapeAll([type], maxPages);
+  console.log(`[REFRESH] Scraped ${regulations.length} regulations`);
 
-    console.timeEnd('document-refresh');
-  } catch (error) {
-    console.error('[REFRESH] Error refreshing documents:', error);
+  if (regulations.length > 0) {
+    await saveToDatabase(regulations);
   }
 }
 
-async function refreshCourtDecisions() {
-  console.log('[REFRESH] Starting court decision refresh...');
-  console.time('court-refresh');
-
-  try {
-    // Scrape court decisions
-    console.log('[REFRESH] Scraping court decisions...');
-    const decisions = await scrapeAllCourts();
-    console.log(`[REFRESH] Scraped ${decisions.length} court decisions`);
-
-    // Save to database
-    if (decisions.length > 0) {
-      await saveDecisionsToDatabase(decisions);
-      console.log('[REFRESH] Court decisions saved to database');
-    }
-
-    console.timeEnd('court-refresh');
-  } catch (error) {
-    console.error('[REFRESH] Error refreshing court decisions:', error);
-  }
-}
-
-async function fullRefresh() {
-  console.log('===========================================');
-  console.log('[REFRESH] Starting full data refresh');
-  console.log(`[REFRESH] Time: ${new Date().toISOString()}`);
-  console.log('===========================================');
-
-  await refreshDocuments();
-  await refreshCourtDecisions();
-
-  console.log('===========================================');
-  console.log('[REFRESH] Full refresh complete!');
-  console.log('===========================================');
-}
-
-// CLI runner
-const command = process.argv[2] || 'all';
-
-(async () => {
-  try {
-    switch (command) {
-      case 'documents':
-        await refreshDocuments();
-        break;
-      case 'courts':
-        await refreshCourtDecisions();
-        break;
-      case 'all':
-      default:
-        await fullRefresh();
-    }
-    process.exit(0);
-  } catch (error) {
-    console.error('[REFRESH] Refresh failed:', error);
-    process.exit(1);
-  }
-})();
+main().catch((error) => {
+  console.error('[REFRESH] Failed:', error);
+  process.exitCode = 1;
+});

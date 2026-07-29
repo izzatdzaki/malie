@@ -2,8 +2,17 @@
 
 import { useState } from 'react';
 
+type UserFilter = 'all' | 'free' | 'premium' | 'admin';
+
+const FILTERS: Array<{ value: UserFilter; label: string }> = [
+  { value: 'all', label: 'Semua' },
+  { value: 'free', label: 'Free' },
+  { value: 'premium', label: 'Premium' },
+  { value: 'admin', label: 'Admin' },
+];
+
 export default function AdminUsersPage() {
-  const [filter, setFilter] = useState<'all' | 'free' | 'premium' | 'admin'>('all');
+  const [filter, setFilter] = useState<UserFilter>('all');
 
   return (
     <div className="p-6">
@@ -13,15 +22,10 @@ export default function AdminUsersPage() {
 
       {/* Filters */}
       <div className="flex gap-2 mb-6">
-        {[
-          { value: 'all', label: 'Semua' },
-          { value: 'free', label: 'Free' },
-          { value: 'premium', label: 'Premium' },
-          { value: 'admin', label: 'Admin' },
-        ].map((f) => (
+        {FILTERS.map((f) => (
           <button
             key={f.value}
-            onClick={() => setFilter(f.value as any)}
+            onClick={() => setFilter(f.value)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
               filter === f.value
                 ? 'bg-primary text-white'

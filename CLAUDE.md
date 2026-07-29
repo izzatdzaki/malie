@@ -59,7 +59,8 @@ npx prisma db studio    # Open Prisma Studio
 
 ## Data Pipeline
 
-Scrapers are in `src/scripts/scrapers/` and can be run with ts-node.
+The active scraper reads `peraturan.go.id` and runs through the `npm run scrape`,
+`npm run scrape:detail`, and `npm run scrape:sync` commands.
 Embeddings use OpenAI API and require valid API key in .env.
 
 ## Design System

@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import type { LegalReference } from '@/lib/ai/claude';
 import { Message } from './message';
-import { cn } from '@/lib/utils';
 
 interface MessageData {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  references?: any[];
+  references?: LegalReference[];
 }
 
 interface ChatContainerProps {

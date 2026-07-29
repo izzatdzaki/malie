@@ -14,6 +14,7 @@ const prisma = new PrismaClient();
 // In production, use pgvector with proper VECTOR(1536) column
 
 async function generateEmbedding(text: string): Promise<number[]> {
+  void text;
   // Placeholder - in production, use OpenAI's text-embedding-3-small
   // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   // const response = await openai.embeddings.create({
@@ -46,7 +47,7 @@ async function embedLegalDocuments() {
       const textToEmbed = `${doc.title}\n\n${doc.content}`;
 
       // Generate embedding
-      const embedding = await generateEmbedding(textToEmbed);
+      await generateEmbedding(textToEmbed);
 
       // Update document with embedding
       // In production, you would use raw SQL to update the vector column:
@@ -80,7 +81,7 @@ async function embedCourtDecisions() {
   for (const dec of decisions) {
     try {
       const textToEmbed = `${dec.caseNumber}\n\n${dec.verdict}`;
-      const embedding = await generateEmbedding(textToEmbed);
+      await generateEmbedding(textToEmbed);
 
       // Update with embedding
       // await prisma.$executeRaw`UPDATE court_decisions SET embedding = ${embedding}::vector WHERE id = ${dec.id}`;

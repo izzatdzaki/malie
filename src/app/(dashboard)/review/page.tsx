@@ -2,11 +2,35 @@
 
 import { useState } from 'react';
 
+type ReviewType = 'contract' | 'compliance' | 'due_diligence';
+
+interface ReviewRisk {
+  severity: 'low' | 'medium' | 'high';
+  clause: string;
+  recommendation: string;
+}
+
+interface ReviewResult {
+  overallScore: number;
+  summary: string;
+  risks: ReviewRisk[];
+}
+
+const REVIEW_TYPES: Array<{
+  value: ReviewType;
+  label: string;
+  desc: string;
+}> = [
+  { value: 'contract', label: 'Kontrak', desc: 'Risiko dalam kontrak' },
+  { value: 'compliance', label: 'Compliance', desc: 'Kesesuaian UU' },
+  { value: 'due_diligence', label: 'Due Diligence', desc: 'Analisis transaksi' },
+];
+
 export default function ReviewPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [reviewType, setReviewType] = useState<'contract' | 'compliance' | 'due_diligence'>('contract');
+  const [reviewType, setReviewType] = useState<ReviewType>('contract');
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<ReviewResult | null>(null);
   const [error, setError] = useState('');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -102,7 +126,7 @@ export default function ReviewPage() {
                 <div className="bg-surface border border-border rounded-xl p-6">
                   <h2 className="font-semibold text-text-primary mb-4">Risiko Terdeteksi</h2>
                   <div className="space-y-3">
-                    {result.risks.map((risk: any, index: number) => (
+                    {result.risks.map((risk, index) => (
                       <div key={index} className="border border-border rounded-lg p-4">
                         <div className="flex items-center gap-2 mb-2">
                           <span className={`px-2 py-1 text-xs font-medium rounded ${
@@ -142,15 +166,11 @@ export default function ReviewPage() {
                   Jenis Review
                 </label>
                 <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { value: 'contract', label: 'Kontrak', desc: 'Risiko dalam kontrak' },
-                    { value: 'compliance', label: 'Compliance', desc: 'Kesesuaian UU' },
-                    { value: 'due_diligence', label: 'Due Diligence', desc: 'Analisis transaksi' },
-                  ].map((type) => (
+                  {REVIEW_TYPES.map((type) => (
                     <button
                       key={type.value}
                       type="button"
-                      onClick={() => setReviewType(type.value as any)}
+                      onClick={() => setReviewType(type.value)}
                       className={`p-3 border rounded-lg text-left transition ${
                         reviewType === type.value
                           ? 'border-primary bg-primary/5'

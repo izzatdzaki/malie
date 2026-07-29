@@ -2,7 +2,7 @@
  * Document generation prompt templates
  */
 
-import { DocumentTemplate, DOCUMENT_TEMPLATES } from './gemini';
+import { DOCUMENT_TEMPLATES } from './gemini';
 
 export function buildDocumentGenerationPrompt(
   templateId: string,

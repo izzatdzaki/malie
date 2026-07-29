@@ -5,6 +5,8 @@
  * Note: This is a template - adjust based on actual API structure
  */
 
+import { PrismaClient } from '@prisma/client';
+
 interface LegalDocument {
   title: string;
   type: 'uu' | 'pp' | 'presiden' | 'menteri';
@@ -70,7 +72,6 @@ export async function scrapeAllUU(): Promise<LegalDocument[]> {
  * Example function to save documents to database
  */
 export async function saveToDatabase(docs: LegalDocument[]) {
-  const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient();
 
   for (const doc of docs) {

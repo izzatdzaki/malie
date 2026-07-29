@@ -1,27 +1,49 @@
 /**
- * Scraper for peraturan.go.id
- * Source: https://peraturan.go.id
+ * Scraper for the public regulation catalog at peraturan.go.id.
  *
- * Data tersedia:
- * - UU (Undang-Undang)
- * - PP (Peraturan Pemerintah)
- * - Perpres (Peraturan Presiden)
- * - Permen (Peraturan Menteri)
- * - Perda (Peraturan Daerah)
+ * Usage:
+ *   npm run scrape -- uu 1
+ *   npm run scrape:detail -- uu no-3-tahun-2026
+ *   npm run scrape:sync -- uu 1
  */
 
-interface Regulation {
+import { pathToFileURL } from 'node:url';
+import { PrismaClient } from '@prisma/client';
+import * as cheerio from 'cheerio';
+
+const BASE_URL = 'https://peraturan.go.id';
+export const REGULATION_TYPES = [
+  'uu',
+  'pp',
+  'perpres',
+  'permen',
+  'perda',
+] as const;
+const REQUEST_HEADERS = {
+  accept: 'text/html,application/xhtml+xml',
+  'user-agent': 'LegalAI data scraper/1.0',
+};
+
+export type RegulationType = typeof REGULATION_TYPES[number];
+
+export interface Regulation {
   title: string;
-  type: 'uu' | 'pp' | 'perpres' | 'permen' | 'perda';
+  type: RegulationType;
   number: string;
   year: number;
-  tentang?: string;
+  tentang: string;
   status?: string;
   pdfUrl?: string;
   detailUrl: string;
 }
 
-interface DetailInfo {
+export interface RegulationPage {
+  regulations: Regulation[];
+  hasNext: boolean;
+  pageNumbers: number[];
+}
+
+export interface DetailInfo {
   title: string;
   type: string;
   number: string;
@@ -38,144 +60,201 @@ interface DetailInfo {
     pejabat?: string;
   };
   nomorLembaranNegara?: string;
+  nomorTambahanLembaranNegara?: string;
   pdfUrl?: string;
+  detailUrl: string;
 }
 
-// Types that can be scraped
-const REGULATION_TYPES = ['uu', 'pp', 'perpres', 'permen', 'perda'] as const;
-
-/**
- * Scrape list of regulations from a specific type
- */
-export async function scrapeRegulationList(
-  type: typeof REGULATION_TYPES[number],
-  page: number = 1
-): Promise<Regulation[]> {
-  const url = `https://peraturan.go.id/${type}${page > 1 ? `?page=${page}` : ''}`;
-
-  console.log(`Scraping ${type} from: ${url}`);
-
-  // Note: In production, use fetch with proper error handling
-  // This is a template - actual implementation would use cheerio or similar
-  // to parse the HTML response
-
-  // Example structure:
-  // const response = await fetch(url);
-  // const html = await response.text();
-  // const $ = cheerio.load(html);
-  // const regulations = [];
-  //
-  // $('.table-data tbody tr').each((i, el) => {
-  //   const title = $(el).find('td:nth-child(1)').text();
-  //   const number = $(el).find('td:nth-child(2)').text();
-  //   // ...
-  // });
-
-  return [];
+function normalizeText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
 }
 
-/**
- * Scrape detail page for a specific regulation
- */
-export async function scrapeRegulationDetail(
-  type: string,
-  slug: string
-): Promise<DetailInfo | null> {
-  const url = `https://peraturan.go.id/id/${type}-${slug}`;
-
-  console.log(`Scraping detail from: ${url}`);
-
-  // Example structure after parsing:
-  // return {
-  //   title: "Undang-Undang Nomor 3 Tahun 2026",
-  //   type: "uu",
-  //   number: "3",
-  //   year: 2026,
-  //   tentang: "Pelindungan Saksi dan Korban",
-  //   status: "Berlaku",
-  //   ditetapkan: {
-  //     tempat: "Jakarta",
-  //     tanggal: "20 Mei 2026",
-  //     pejabat: "Prabowo Subianto"
-  //   },
-  //   pdfUrl: "https://peraturan.go.id/files/uu-no-3-tahun-2026.pdf"
-  // };
-
-  return null;
+function absoluteUrl(value?: string): string | undefined {
+  return value ? new URL(value, BASE_URL).toString() : undefined;
 }
 
-/**
- * Get PDF download URL from regulation type and number
- */
-export function getPdfUrl(type: string, number: string, year: number): string {
-  // Pattern for PDF URLs based on observed structure
-  const patterns: Record<string, string> = {
-    'uu': `https://peraturan.go.id/files/uu-no-${number}-tahun-${year}.pdf`,
-    'pp': `https://peraturan.go.id/files/pp-no-${number}-tahun-${year}.pdf`,
-    'perpres': `https://peraturan.go.id/files/perpres-no-${number}-tahun-${year}.pdf`,
-    'permen': `https://peraturan.go.id/files/permen-no-${number}-tahun-${year}.pdf`,
+async function fetchHtml(url: string): Promise<string> {
+  const response = await fetch(url, {
+    headers: REQUEST_HEADERS,
+    redirect: 'follow',
+    signal: AbortSignal.timeout(20_000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
+  }
+
+  return response.text();
+}
+
+export function isRegulationType(value: string): value is RegulationType {
+  return REGULATION_TYPES.some((type) => type === value);
+}
+
+export async function scrapeRegulationPage(
+  type: RegulationType,
+  page = 1
+): Promise<RegulationPage> {
+  if (!Number.isInteger(page) || page < 1) {
+    throw new Error(`Invalid page number: ${page}`);
+  }
+
+  const url = new URL(`/${type}`, BASE_URL);
+  url.searchParams.set('page', String(page));
+
+  console.log(`Scraping ${type} page ${page}: ${url}`);
+  const html = await fetchHtml(url.toString());
+  const $ = cheerio.load(html);
+  const regulations: Regulation[] = [];
+
+  $('.strip.grid').each((_index, element) => {
+    const card = $(element);
+    const detailLink = card.find('a[title="lihat detail"]').first();
+    const detailHref = detailLink.attr('href');
+    const descriptor = normalizeText(card.find('.wrapper > p').first().text());
+    const match = descriptor.match(/Nomor\s+(.+?)\s+Tahun\s+(\d{4})/i);
+
+    if (!detailHref || !match) {
+      return;
+    }
+
+    const pdfHref = card.find('a[href*="/files/"]').first().attr('href');
+    const title = normalizeText(detailLink.text());
+
+    regulations.push({
+      title: descriptor,
+      type,
+      number: match[1],
+      year: Number(match[2]),
+      tentang: title,
+      pdfUrl: absoluteUrl(pdfHref),
+      detailUrl: absoluteUrl(detailHref) as string,
+    });
+  });
+
+  if ($('.strip.grid').length > 0 && regulations.length === 0) {
+    throw new Error(`Page structure changed; no ${type} records could be parsed`);
+  }
+
+  const pageNumbers = [
+    ...new Set(
+      $('.pagination a[data-page]')
+        .map((_index, element) => Number(normalizeText($(element).text())))
+        .get()
+        .filter((value) => Number.isInteger(value) && value > 0)
+    ),
+  ].sort((a, b) => a - b);
+
+  if (!pageNumbers.includes(page)) {
+    pageNumbers.push(page);
+    pageNumbers.sort((a, b) => a - b);
+  }
+
+  return {
+    regulations,
+    hasNext: $('.pagination li.next:not(.disabled)').length > 0,
+    pageNumbers,
   };
-
-  return patterns[type] || '';
 }
 
-/**
- * Main scraper function for all regulation types
- */
-export async function scrapeAll(
-  types: typeof REGULATION_TYPES[number][] = [...REGULATION_TYPES]
+export async function scrapeRegulationList(
+  type: RegulationType,
+  page = 1
 ): Promise<Regulation[]> {
+  return (await scrapeRegulationPage(type, page)).regulations;
+}
+
+export async function scrapeRegulationDetail(
+  type: RegulationType,
+  slug: string
+): Promise<DetailInfo> {
+  const sourceSlug = slug.startsWith('no-') ? `${type}-${slug}` : slug;
+  const detailUrl = new URL(`/id/${sourceSlug}`, BASE_URL).toString();
+  console.log(`Scraping detail: ${detailUrl}`);
+
+  const html = await fetchHtml(detailUrl);
+  const $ = cheerio.load(html);
+  const fields = new Map<string, string>();
+
+  $('table tr').each((_index, row) => {
+    const key = normalizeText($(row).find('th').first().text()).toLowerCase();
+    const value = normalizeText($(row).find('td').first().text());
+    if (key) fields.set(key, value);
+  });
+
+  const number = fields.get('nomor');
+  const year = Number(fields.get('tahun'));
+  if (!number || !Number.isInteger(year)) {
+    throw new Error(`Page structure changed; detail metadata was not found`);
+  }
+
+  const pdfHref = $('table a[href*="/files/"]').first().attr('href');
+
+  return {
+    title: normalizeText($('section#description h1').first().text()),
+    type: fields.get('jenis/bentuk peraturan') ?? type.toUpperCase(),
+    number,
+    year,
+    tentang: fields.get('tentang'),
+    status: fields.get('status'),
+    ditetapkan: {
+      tempat: fields.get('tempat penetapan'),
+      tanggal: fields.get('ditetapkan tanggal'),
+      pejabat: fields.get('pejabat yang menetapkan'),
+    },
+    diundangkan: {
+      tanggal: fields.get('tanggal pengundangan'),
+      pejabat: fields.get('pejabat pengundangan'),
+    },
+    nomorLembaranNegara: fields.get('nomor pengundangan'),
+    nomorTambahanLembaranNegara: fields.get('nomor tambahan'),
+    pdfUrl: absoluteUrl(pdfHref),
+    detailUrl,
+  };
+}
+
+export async function scrapeAll(
+  types: RegulationType[] = [...REGULATION_TYPES],
+  maxPages = 1
+): Promise<Regulation[]> {
+  if (!Number.isInteger(maxPages) || maxPages < 1) {
+    throw new Error(`Invalid maximum page count: ${maxPages}`);
+  }
+
   const allRegulations: Regulation[] = [];
 
   for (const type of types) {
-    console.log(`\n=== Scraping ${type.toUpperCase()} ===`);
+    for (let page = 1; page <= maxPages; page++) {
+      const regulations = await scrapeRegulationList(type, page);
+      if (regulations.length === 0) break;
 
-    let page = 1;
-    let hasMore = true;
-    let count = 0;
+      allRegulations.push(...regulations);
+      console.log(`[${type.toUpperCase()}] page ${page}: ${regulations.length}`);
 
-    while (hasMore && page <= 100) {
-      try {
-        const regulations = await scrapeRegulationList(type, page);
-
-        if (regulations.length === 0) {
-          hasMore = false;
-        } else {
-          allRegulations.push(...regulations);
-          count += regulations.length;
-          console.log(`Page ${page}: ${regulations.length} items (Total: ${count})`);
-          page++;
-
-          // Rate limiting - be respectful to the server
-          await sleep(2000);
-        }
-      } catch (error) {
-        console.error(`Error on page ${page}:`, error);
-        hasMore = false;
+      if (page < maxPages) {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
     }
-
-    console.log(`[${type.toUpperCase()}] Total scraped: ${count}`);
   }
 
   return allRegulations;
 }
 
-/**
- * Save regulations to database
- */
 export async function saveToDatabase(regulations: Regulation[]) {
-  const { PrismaClient } = require('@prisma/client');
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required to save scraped data');
+  }
+
   const prisma = new PrismaClient();
-
   let saved = 0;
-  let errors = 0;
 
-  for (const reg of regulations) {
-    try {
+  try {
+    for (const reg of regulations) {
+      const sourceId = new URL(reg.detailUrl).pathname.replace(/^\/id\//, '');
+
       await prisma.legalDocument.upsert({
         where: {
-          id: `${reg.type}-${reg.number}-${reg.year}`,
+          id: sourceId,
         },
         update: {
           title: reg.title,
@@ -185,84 +264,79 @@ export async function saveToDatabase(regulations: Regulation[]) {
             tahun: reg.year,
             tentang: reg.tentang,
             status: reg.status,
+            pdfUrl: reg.pdfUrl,
           },
           sourceUrl: reg.detailUrl,
         },
         create: {
-          id: `${reg.type}-${reg.number}-${reg.year}`,
+          id: sourceId,
           title: reg.title,
           type: reg.type,
-          content: '', // Full content downloaded from PDF separately
+          content: '',
           summary: reg.tentang,
           metadata: {
             nomor: reg.number,
             tahun: reg.year,
             tentang: reg.tentang,
             status: reg.status,
+            pdfUrl: reg.pdfUrl,
           },
           sourceUrl: reg.detailUrl,
         },
       });
-
       saved++;
-      console.log(`Saved: ${reg.title}`);
-    } catch (error) {
-      errors++;
-      console.error(`Error saving ${reg.title}:`, error);
     }
+  } finally {
+    await prisma.$disconnect();
   }
 
-  console.log(`\nDatabase save complete: ${saved} saved, ${errors} errors`);
-  await prisma.$disconnect();
+  console.log(`Saved ${saved} regulations`);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// CLI runner
-const args = process.argv.slice(2);
-const command = args[0] || 'all';
-const type = args[1] || 'uu';
-
-(async () => {
-  console.log('===========================================');
-  console.log(`Scraper: peraturan.go.id`);
-  console.log(`Command: ${command}`);
-  console.log(`Type: ${type}`);
-  console.log('===========================================\n');
-
-  try {
-    switch (command) {
-      case 'scrape':
-        if (type === 'all') {
-          await scrapeAll();
-        } else if (REGULATION_TYPES.includes(type as any)) {
-          const regulations = await scrapeRegulationList(type as any);
-          console.log(`Scraped ${regulations.length} ${type} regulations`);
-        }
-        break;
-
-      case 'scrape-detail':
-        const detail = await scrapeRegulationDetail(type, args[2] || '');
-        console.log('Detail:', detail);
-        break;
-
-      case 'all':
-      default:
-        const all = await scrapeAll();
-        console.log(`\nTotal scraped: ${all.length}`);
-        if (all.length > 0) {
-          await saveToDatabase(all);
-        }
-    }
-
-    console.log('\n===========================================');
-    console.log('Scraping complete!');
-    console.log('===========================================');
-    process.exit(0);
-  } catch (error) {
-    console.error('Scraper failed:', error);
-    process.exit(1);
+function parseType(value: string): RegulationType {
+  if (!isRegulationType(value)) {
+    throw new Error(
+      `Unsupported regulation type "${value}". Use: ${REGULATION_TYPES.join(', ')}`
+    );
   }
-})();
+  return value;
+}
+
+async function main() {
+  const command = process.argv[2] ?? 'scrape';
+  const type = parseType(process.argv[3] ?? 'uu');
+
+  if (command === 'detail') {
+    const slug = process.argv[4];
+    if (!slug) throw new Error('A detail slug is required');
+    console.log(JSON.stringify(await scrapeRegulationDetail(type, slug), null, 2));
+    return;
+  }
+
+  const pages = Number(process.argv[4] ?? '1');
+  const data = await scrapeAll([type], pages);
+
+  if (command === 'sync') {
+    await saveToDatabase(data);
+    return;
+  }
+
+  if (command !== 'scrape') {
+    throw new Error(`Unknown command "${command}". Use: scrape, detail, or sync`);
+  }
+
+  console.log(JSON.stringify({
+    count: data.length,
+    sample: data.slice(0, 3),
+  }, null, 2));
+}
+
+const isMainModule =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMainModule) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

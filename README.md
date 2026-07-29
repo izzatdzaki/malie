@@ -72,21 +72,28 @@ Platform riset hukum berbasis AI untuk mahasiswa hukum, masyarakat umum, dan adv
 
 ## Data Pipeline
 
-To scrape and embed legal documents:
+Scrape regulation metadata from `peraturan.go.id`:
 
 ```bash
-# Scrape UU/PP from Indonesia Legal
-npx ts-node scripts/scrapers/indonesiallegal.ts
+# Preview one page without writing to the database
+npm run scrape -- uu 1
 
-# Scrape court decisions from MA
-npx ts-node scripts/scrapers/ma-scraper.ts
+# Fetch complete metadata for one regulation
+npm run scrape:detail -- uu no-3-tahun-2026
 
-# Generate embeddings
-npx ts-node scripts/embedder.ts
+# Scrape and save to PostgreSQL (requires DATABASE_URL)
+npm run scrape:sync -- uu 1
 
-# Full refresh
-npx ts-node scripts/refresh-data.ts
+# Preview one page from the complete JDIH BPK catalog
+npm run scrape:bpk -- 1
+
+# Preview one BPK catalog page for a specific year
+npm run scrape:bpk -- 1 2025
 ```
+
+Supported types: `uu`, `pp`, `perpres`, `permen`, and `perda`.
+The admin document page can also browse the JDIH BPK catalog by year, including
+metadata, abstracts, status, subjects, and available download links.
 
 ## Project Structure
 
